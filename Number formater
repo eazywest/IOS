@@ -1,0 +1,48 @@
+protocol numberFormater {
+    func phoneNumberFormatted() -> String
+}
+
+struct PhoneNumber: numberFormater {
+    var storagePhoneNumber: String
+
+    func phoneNumberFormatted() -> String {
+        var onlyNumber: String = ""
+
+        for character in storagePhoneNumber {
+            if character.isNumber {
+                onlyNumber.append(character)
+            }else { 
+                return "Неверный формат номера"
+            }
+        }
+
+        if onlyNumber.count != 10 {
+            return "Неверная длина номера"
+        }
+  
+
+        let countryCode = "+7"
+        let codeOperatora = String(onlyNumber.prefix(3))
+        let firstPartOfNumber = String(onlyNumber.dropFirst(3).prefix(3))
+        let secondPartOfNumber = String(onlyNumber.dropFirst(6).prefix(2))
+        let theEndOfNumber = String(onlyNumber.suffix(2))
+
+        let formattedNumber: String = "\(countryCode) (\(codeOperatora)) \(firstPartOfNumber)-\(secondPartOfNumber)-\(theEndOfNumber)"
+
+        return formattedNumber
+    }
+}
+
+print("Введите ваш номер: +7", terminator: "")
+if let inputPhoneNumber = readLine() {
+    let instanceStorNumber = PhoneNumber(storagePhoneNumber: inputPhoneNumber)
+    let formattedNumber = instanceStorNumber.phoneNumberFormatted()
+
+    if formattedNumber == "Неверная длина номера" ||  formattedNumber == "Неверный формат номера" {
+        print(formattedNumber) 
+    } else {
+         print("На ваш номер \(formattedNumber) когда нибудь придет SMS сообщение")
+    }
+} else {
+    print("Ошибка ввода: Не удалось получить номер телефона.")
+}
