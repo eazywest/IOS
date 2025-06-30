@@ -2,7 +2,7 @@ protocol numberFormater {
     func phoneNumberFormatted() -> String
 }
 
-struct PhoneNumber: numberFormater {
+struct PhoneNumberRussia: numberFormater {
     var storagePhoneNumber: String
 
     func phoneNumberFormatted() -> String {
@@ -33,9 +33,45 @@ struct PhoneNumber: numberFormater {
     }
 }
 
-print("Введите ваш номер: +7", terminator: "")
+struct PhoneNumberUSE: numberFormater {
+    var storagePhoneNumber: String
+
+    func phoneNumberFormatted() -> String {
+        var onlyNumber: String = ""
+
+        for character in storagePhoneNumber {
+            if character.isNumber {
+                onlyNumber.append(character)
+            }else { 
+                return "Incorrect number format"
+            }
+        }
+
+        if onlyNumber.count != 10 {
+            return "Incorrect number length"
+        }
+  
+
+        let countryCode = "+1"
+        let codeOperatora = String(onlyNumber.prefix(3))
+        let midlPartOfNumber = String(onlyNumber.dropFirst(3).prefix(3))
+        let theEndOfNumber = String(onlyNumber.suffix(4))
+
+        let formattedNumber: String = "\(countryCode) (\(codeOperatora)) \(midlPartOfNumber)-\(theEndOfNumber)"
+
+        return formattedNumber
+    }
+}
+
+
+
+print("Выберите страну (Select a country):\n1. Россия\n2. США")
+if let choseOfCountry = readLine(){
+    switch choseOfCountry{
+        case "1":
+        print("Введите ваш номер: +7", terminator: "")
 if let inputPhoneNumber = readLine() {
-    let instanceStorNumber = PhoneNumber(storagePhoneNumber: inputPhoneNumber)
+    let instanceStorNumber = PhoneNumberRussia(storagePhoneNumber: inputPhoneNumber)
     let formattedNumber = instanceStorNumber.phoneNumberFormatted()
 
     if formattedNumber == "Неверная длина номера" ||  formattedNumber == "Неверный формат номера" {
@@ -45,4 +81,23 @@ if let inputPhoneNumber = readLine() {
     }
 } else {
     print("Ошибка ввода: Не удалось получить номер телефона.")
+}
+    
+    case "2":
+    print("Enter your number: +1", terminator: "")
+if let inputPhoneNumber = readLine() {
+    let instanceStorNumber = PhoneNumberUSE(storagePhoneNumber: inputPhoneNumber)
+    let formattedNumber = instanceStorNumber.phoneNumberFormatted()
+
+    if formattedNumber == "Incorrect number length" ||  formattedNumber == "Incorrect number format" {
+        print(formattedNumber) 
+    } else {
+         print("A message will arrive at your number \(formattedNumber) someday")
+    }
+} else {
+    print("Input error: Unable to retrieve the phone number.")
+}
+default:
+        print("Wrong choice of country")
+}
 }
