@@ -1,0 +1,41 @@
+class DataStorage {
+    typealias DataUnit = (key: String, value: Any)
+    var data: [DataUnit] = []
+
+
+    func saveData(key: String, value: Any) {
+        let newData: DataUnit = (key: key, value: value)
+        data.append(newData)
+    }
+
+    func getData(key: String) -> Any? {
+        for unit in data {
+            if unit.key == key {
+                return unit.value
+            }
+        }
+        return nil
+    }
+    func getAllData() -> [DataUnit] {
+        return data
+    }
+}
+
+let storage = DataStorage()
+
+storage.saveData(key: "name", value: "Олег")
+storage.saveData(key: "age", value: 20)
+
+if let name = storage.getData(key: "name") as? String {
+    print("Имя: \(name)") 
+}
+if let age = storage.getData(key: "age") as? Int { 
+    print("Возраст: \(age)") 
+}
+
+let allData = storage.getAllData()
+
+
+for item in allData {
+    print("Ключ: \(item.key), Значение: \(item.value)")
+}
