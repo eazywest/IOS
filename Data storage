@@ -1,41 +1,83 @@
-class DataStorage {
-    typealias DataUnit = (key: String, value: Any)
-    var data: [DataUnit] = []
+import Foundation
 
+protocol JSONSerializable: Encodable {}
 
-    func saveData(key: String, value: Any) {
-        let newData: DataUnit = (key: key, value: value)
-        data.append(newData)
+protocol JSONDeserializable: Decodable {}
+
+typealias JSONCodable = JSONSerializable & JSONDeserializable
+
+struct Request<T: JSONCodable> {
+    let data: T
+    let requestID: String 
+
+    init(data: T, requestID: String = UUID().uuidString) { 
+        self.data = data
+        self.requestID = requestID
     }
+}
 
-    func getData(key: String) -> Any? {
-        for unit in data {
-            if unit.key == key {
-                return unit.value
-            }
+protocol RequestStorable {
+    associatedtype RequestType: JSONCodable
+    func saveRequest(request: Request<RequestType>)
+    func loadRequest(requestID: String) -> Request<RequestType>?
+    func clearRequest(requestID: String)
+}
+
+
+class RequestStorage<T: JSONCodable>: RequestStorable {
+    typealias RequestType = T
+
+    func saveRequest(request: Request<RequestType>) {
+        let encoder = JSONEncoder()
+        do {
+            let encodedData = try encoder.encode(request)
+            UserDefaults.standard.set(encodedData, forKey: request.requestID)
+            print("Request saved successfully with ID: \(request.requestID)")
+        } catch {
+            print("Failed to encode request: \(error)")
         }
-        return nil
     }
-    func getAllData() -> [DataUnit] {
-        return data
+
+    func loadRequest(requestID: String) -> Request<RequestType>? {
+        guard let data = UserDefaults.standard.data(forKey: requestID) else {
+            print("No request found with ID: \(requestID)")
+            return nil
+        }
+
+        let decoder = JSONDecoder()
+        do {
+            let decodedRequest = try decoder.decode(Request<RequestType>.self, from: data)
+            print("Request loaded successfully with ID: \(requestID)")
+            return decodedRequest
+        } catch {
+            print("Failed to decode request: \(error)")
+            return nil
+        }
+    }
+
+    func clearRequest(requestID: String) {
+        UserDefaults.standard.removeObject(forKey: requestID)
+        print("Request cleared with ID: \(requestID)")
     }
 }
 
-let storage = DataStorage()
 
-storage.saveData(key: "name", value: "Олег")
-storage.saveData(key: "age", value: 20)
-
-if let name = storage.getData(key: "name") as? String {
-    print("Имя: \(name)") 
-}
-if let age = storage.getData(key: "age") as? Int { 
-    print("Возраст: \(age)") 
+struct UserProfile: JSONCodable {
+    let id: Int
+    let name: String
+    let email: String
 }
 
-let allData = storage.getAllData()
+let requestStorage = RequestStorage<UserProfile>()
 
+let newUserProfile = UserProfile(id: 1, name: "Bob", email: "Bob@example.com")
 
-for item in allData {
-    print("Ключ: \(item.key), Значение: \(item.value)")
+let userRequest = Request(data: newUserProfile)
+
+requestStorage.saveRequest(request: userRequest)
+
+if let loadedRequest = requestStorage.loadRequest(requestID: userRequest.requestID) {
+    print("Loaded Request: \(loadedRequest.data)")
 }
+
+requestStorage.clearRequest(requestID: userRequest.requestID)
