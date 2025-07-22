@@ -1,16 +1,14 @@
 import Foundation
 
 protocol JSONSerializable: Encodable {}
-
 protocol JSONDeserializable: Decodable {}
-
 typealias JSONCodable = JSONSerializable & JSONDeserializable
 
 struct Request<T: JSONCodable> {
     let data: T
-    let requestID: String 
+    let requestID: String
 
-    init(data: T, requestID: String = UUID().uuidString) { 
+    init(data: T, requestID: String = UUID().uuidString) {
         self.data = data
         self.requestID = requestID
     }
@@ -18,49 +16,69 @@ struct Request<T: JSONCodable> {
 
 protocol RequestStorable {
     associatedtype RequestType: JSONCodable
-    func saveRequest(request: Request<RequestType>)
-    func loadRequest(requestID: String) -> Request<RequestType>?
-    func clearRequest(requestID: String)
+    func saveRequest(request: Request<RequestType>, completion: @escaping (Result<Void, Error>) -> Void)
+    func loadRequest(requestID: String, completion: @escaping (Result<Request<RequestType>?, Error>) -> Void)
+    func clearRequest(requestID: String, completion: @escaping (Result<Void, Error>) -> Void)
 }
-
 
 class RequestStorage<T: JSONCodable>: RequestStorable {
     typealias RequestType = T
 
-    func saveRequest(request: Request<RequestType>) {
+    func saveRequest(request: Request<RequestType>, completion: @escaping (Result<Void, Error>) -> Void) {
         let encoder = JSONEncoder()
-        do {
-            let encodedData = try encoder.encode(request)
-            UserDefaults.standard.set(encodedData, forKey: request.requestID)
-            print("Request saved successfully with ID: \(request.requestID)")
-        } catch {
-            print("Failed to encode request: \(error)")
+        DispatchQueue.global(qos: .background).async {
+            do {
+                let encodedData = try encoder.encode(request)
+                UserDefaults.standard.set(encodedData, forKey: request.requestID)
+                DispatchQueue.main.async {
+                    print("Request saved successfully with ID: \(request.requestID)")
+                    completion(.success(()))
+                }
+            } catch {
+                DispatchQueue.main.async {
+                    print("Failed to encode request: \(error)")
+                    completion(.failure(error))
+                }
+            }
         }
     }
 
-    func loadRequest(requestID: String) -> Request<RequestType>? {
-        guard let data = UserDefaults.standard.data(forKey: requestID) else {
-            print("No request found with ID: \(requestID)")
-            return nil
-        }
+    func loadRequest(requestID: String, completion: @escaping (Result<Request<RequestType>?, Error>) -> Void) {
+        DispatchQueue.global(qos: .background).async {
+            guard let data = UserDefaults.standard.data(forKey: requestID) else {
+                DispatchQueue.main.async {
+                    print("No request found with ID: \(requestID)")
+                    completion(.success(nil))
+                }
+                return
+            }
 
-        let decoder = JSONDecoder()
-        do {
-            let decodedRequest = try decoder.decode(Request<RequestType>.self, from: data)
-            print("Request loaded successfully with ID: \(requestID)")
-            return decodedRequest
-        } catch {
-            print("Failed to decode request: \(error)")
-            return nil
+            let decoder = JSONDecoder()
+            do {
+                let decodedRequest = try decoder.decode(Request<RequestType>.self, from: data)
+                DispatchQueue.main.async {
+                    print("Request loaded successfully with ID: \(requestID)")
+                    completion(.success(decodedRequest))
+                }
+            } catch {
+                DispatchQueue.main.async {
+                    print("Failed to decode request: \(error)")
+                    completion(.failure(error))
+                }
+            }
         }
     }
 
-    func clearRequest(requestID: String) {
-        UserDefaults.standard.removeObject(forKey: requestID)
-        print("Request cleared with ID: \(requestID)")
+    func clearRequest(requestID: String, completion: @escaping (Result<Void, Error>) -> Void) {
+        DispatchQueue.global(qos: .background).async {
+            UserDefaults.standard.removeObject(forKey: requestID)
+            DispatchQueue.main.async {
+                print("Request cleared with ID: \(requestID)")
+                completion(.success(()))
+            }
+        }
     }
 }
-
 
 struct UserProfile: JSONCodable {
     let id: Int
@@ -71,13 +89,36 @@ struct UserProfile: JSONCodable {
 let requestStorage = RequestStorage<UserProfile>()
 
 let newUserProfile = UserProfile(id: 1, name: "Bob", email: "Bob@example.com")
-
 let userRequest = Request(data: newUserProfile)
 
-requestStorage.saveRequest(request: userRequest)
 
-if let loadedRequest = requestStorage.loadRequest(requestID: userRequest.requestID) {
-    print("Loaded Request: \(loadedRequest.data)")
+requestStorage.saveRequest(request: userRequest) { result in
+    switch result {
+    case .success:
+        requestStorage.loadRequest(requestID: userRequest.requestID) { loadResult in
+            switch loadResult {
+            case .success(let loadedRequest):
+                if let loadedRequest = loadedRequest {
+                    print("Loaded Request: \(loadedRequest.data)")
+                    requestStorage.clearRequest(requestID: userRequest.requestID) { clearResult in
+                        switch clearResult {
+                        case .success:
+                            break 
+                        case .failure(let error):
+                            print("Failed to clear request: \(error)")
+                        }
+                    }
+                } else {
+                    print("No data loaded")
+                }
+            case .failure(let error):
+                print("Failed to load request: \(error)")
+            }
+        }
+    case .failure(let error):
+        print("Failed to save request: \(error)")
+    }
 }
 
-requestStorage.clearRequest(requestID: userRequest.requestID)
+
+RunLoop.main.run(until: Date(timeIntervalSinceNow: 2))
