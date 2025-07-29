@@ -1,124 +1,74 @@
 import Foundation
 
-protocol JSONSerializable: Encodable {}
-protocol JSONDeserializable: Decodable {}
-typealias JSONCodable = JSONSerializable & JSONDeserializable
+protocol JSONCodable: Codable {}
 
 struct Request<T: JSONCodable> {
     let data: T
-    let requestID: String
+}
 
-    init(data: T, requestID: String = UUID().uuidString) {
-        self.data = data
-        self.requestID = requestID
-    }
+enum FileStorageError: Error { 
+    case fileError(Error)
+    case decodingError(Error)
+    case encodingError(Error)
+    
 }
 
 protocol RequestStorable {
     associatedtype RequestType: JSONCodable
-    func saveRequest(request: Request<RequestType>, completion: @escaping (Result<Void, Error>) -> Void)
-    func loadRequest(requestID: String, completion: @escaping (Result<Request<RequestType>?, Error>) -> Void)
-    func clearRequest(requestID: String, completion: @escaping (Result<Void, Error>) -> Void)
+    func saveRequest(key: String, request: Request<RequestType>, baseURL: URL) async throws
+    func loadRequest(key: String, baseURL: URL) async throws -> Request<RequestType>?
 }
 
-class RequestStorage<T: JSONCodable>: RequestStorable {
+class FileRequestStorage<T: JSONCodable>: RequestStorable {
     typealias RequestType = T
 
-    func saveRequest(request: Request<RequestType>, completion: @escaping (Result<Void, Error>) -> Void) {
+    private let fileManager: FileManager
+
+    init(fileManager: FileManager = .default) {
+        self.fileManager = fileManager
+    }
+
+    private func getFileURL(forKey key: String, baseURL: URL) -> URL {
+        return baseURL.appendingPathComponent("\(key).json")
+    }
+
+    func saveRequest(key: String, request: Request<RequestType>, baseURL: URL) async throws {
         let encoder = JSONEncoder()
-        DispatchQueue.global(qos: .background).async {
-            do {
-                let encodedData = try encoder.encode(request)
-                UserDefaults.standard.set(encodedData, forKey: request.requestID)
-                DispatchQueue.main.async {
-                    print("Request saved successfully with ID: \(request.requestID)")
-                    completion(.success(()))
-                }
-            } catch {
-                DispatchQueue.main.async {
-                    print("Failed to encode request: \(error)")
-                    completion(.failure(error))
-                }
-            }
+        let encodedData = try encoder.encode(request) 
+        let fileURL = getFileURL(forKey: key, baseURL: baseURL)
+        
+        do {
+            try await encodedData.write(to: fileURL, options: .atomicWrite)
+            print("Request saved successfully to file: \(fileURL)")
+        } catch {
+            print("Failed to save request to \(fileURL): \(error)")
+            
+            throw FileStorageError.fileError(error)
         }
     }
 
-    func loadRequest(requestID: String, completion: @escaping (Result<Request<RequestType>?, Error>) -> Void) {
-        DispatchQueue.global(qos: .background).async {
-            guard let data = UserDefaults.standard.data(forKey: requestID) else {
-                DispatchQueue.main.async {
-                    print("No request found with ID: \(requestID)")
-                    completion(.success(nil))
-                }
-                return
-            }
-
+    func loadRequest(key: String, baseURL: URL) async throws -> Request<RequestType>? {
+        let fileURL = getFileURL(forKey: key, baseURL: baseURL)
+        
+        guard fileManager.fileExists(atPath: fileURL.path) else {
+            print("No request found at file: \(fileURL)")
+            return nil 
+        }
+        
+        do {
+            let data = try await Data(contentsOf: fileURL)
             let decoder = JSONDecoder()
-            do {
-                let decodedRequest = try decoder.decode(Request<RequestType>.self, from: data)
-                DispatchQueue.main.async {
-                    print("Request loaded successfully with ID: \(requestID)")
-                    completion(.success(decodedRequest))
-                }
-            } catch {
-                DispatchQueue.main.async {
-                    print("Failed to decode request: \(error)")
-                    completion(.failure(error))
-                }
-            }
-        }
-    }
-
-    func clearRequest(requestID: String, completion: @escaping (Result<Void, Error>) -> Void) {
-        DispatchQueue.global(qos: .background).async {
-            UserDefaults.standard.removeObject(forKey: requestID)
-            DispatchQueue.main.async {
-                print("Request cleared with ID: \(requestID)")
-                completion(.success(()))
+            let decodedRequest = try decoder.decode(Request<RequestType>.self, from: data)
+            print("Request loaded successfully from file: \(fileURL)")
+            return decodedRequest
+        } catch {
+            print("Failed to load or decode request from \(fileURL): \(error)")
+                
+            if error is DecodingError {
+                throw FileStorageError.decodingError(error)
+            } else {
+                throw FileStorageError.fileError(error)
             }
         }
     }
 }
-
-struct UserProfile: JSONCodable {
-    let id: Int
-    let name: String
-    let email: String
-}
-
-let requestStorage = RequestStorage<UserProfile>()
-
-let newUserProfile = UserProfile(id: 1, name: "Bob", email: "Bob@example.com")
-let userRequest = Request(data: newUserProfile)
-
-
-requestStorage.saveRequest(request: userRequest) { result in
-    switch result {
-    case .success:
-        requestStorage.loadRequest(requestID: userRequest.requestID) { loadResult in
-            switch loadResult {
-            case .success(let loadedRequest):
-                if let loadedRequest = loadedRequest {
-                    print("Loaded Request: \(loadedRequest.data)")
-                    requestStorage.clearRequest(requestID: userRequest.requestID) { clearResult in
-                        switch clearResult {
-                        case .success:
-                            break 
-                        case .failure(let error):
-                            print("Failed to clear request: \(error)")
-                        }
-                    }
-                } else {
-                    print("No data loaded")
-                }
-            case .failure(let error):
-                print("Failed to load request: \(error)")
-            }
-        }
-    case .failure(let error):
-        print("Failed to save request: \(error)")
-    }
-}
-
-
-RunLoop.main.run(until: Date(timeIntervalSinceNow: 2))
